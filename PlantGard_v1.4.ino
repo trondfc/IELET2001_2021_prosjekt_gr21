@@ -23,7 +23,7 @@
       move to esp-01                    X
         deepsleep rutine for led        X
       ubidots event mesages
-      make circuit        
+      make circuit
       design 3D moddel
       print 3D moddel
       calibrate mesurments
@@ -42,8 +42,8 @@
 #include <EEPROM.h>             // libary for EEPROM storage
 
 #define TOKEN "BBFF-3YgdHdFOLx4ZLhV3WdXJwOs1izpWXL"   // Your Ubidots TOKEN
-#define WIFINAME "Get-D62F31"                         // Your SSID
-#define WIFIPASS "HRNKLK8LLJ"                         // Your Wifi Pass
+#define WIFINAME "Foss"                         // Your SSID
+#define WIFIPASS "7N437RJGDH"                         // Your Wifi Pass
 #define DEVICE_LABEL "PlantGuard"                     // ubidots device lable
 
 #define TEMP_LABEL "Temp"                             // Ubidots label for temperature
@@ -55,8 +55,8 @@
 #define MOISTURE_WARNING_LABEL "Moisture_warning"     // Ubidots label for moisture warning
 
 #define uS_TO_S_FACTOR 1000000ULL     // Conversion factor for micro seconds to seconds
-#define TIME_TO_SLEEP  900            // Time ESP32 will go to sleep (in seconds)
-#define WARNING_TIME_TO_SLEEP 15      // Time betwen blinks in warning mode (in seconds)
+#define TIME_TO_SLEEP  1800            // Time ESP32 will go to sleep (in seconds)
+#define WARNING_TIME_TO_SLEEP 60      // Time betwen blinks in warning mode (in seconds)
 #define OTA_TIME 60000                // Time OTA checker runs (in mS)
 
 #define EEPROM_SIZE 512               // Number of bits stored in EEPROM
@@ -68,10 +68,11 @@
 #define BATERY_CONST_2 98248312502245   // constant for batery persentage formula
 #define BATERY_CONST_3 -8.08            // constant for batery persentage formula
 
-#define AirValue 2627               // value for soil moisture calibration
-#define WaterValue 1285             // value for soil moisture calibration
+#define AirValue 1251               // value for soil moisture calibration
+#define WaterValue 2500             // value for soil moisture calibration
 #define LIGHT_MIN 0                 // value for light level calibration
-#define LIGHT_MAX 4095              // value for light level calibration
+#define LIGHT_MAX 1200              // value for light level calibration
+#define VOLTAGE_OFSET 0.4
 
 
 #define led 1             // GIPO for LED
@@ -96,14 +97,17 @@ void callback(char* topic, byte* payload, unsigned int length) {    // When rece
   }
   EEPROM.put(WATER_FLAG_ADDRESS, led_state);                          // Store boolean state in EEPROM
   EEPROM.commit();                                                    // Store boolean state in EEPROM
+  if (led_state) {                                // If boolean value is 1
+    water_warning();                              // Run water_warning function
+  }
 }
 
 void setup() {                                    // Run on boot
   pinMode(led, OUTPUT);                           // Set pin mode
   pinMode(transistor, OUTPUT);                    // Set pin mode
-  digitalWrite(led,HIGH);                         // Turn off led (revese logic)
+  digitalWrite(led, HIGH);                        // Turn off led (revese logic)
 
-  Wire.begin(0, 2);                               // Start i2c
+  Wire.begin(2, 0);                               // Start i2c
   EEPROM.begin(EEPROM_SIZE);                      // Start EEPROM
   bool flag;                                      // Create boolean
   EEPROM.get(OTA_FLAG_ADDRESS, flag);             // Set boolean to value from EEPROM
@@ -122,6 +126,7 @@ void setup() {                                    // Run on boot
   }
 
   digitalWrite(transistor, HIGH);                                 // Turn sensors on
+  delay(100);
 
   WiFi.mode(WIFI_STA);                                            // Set wifi mode
   WiFi.begin(WIFINAME, WIFIPASS);                                 // Start wifi
@@ -134,21 +139,23 @@ void setup() {                                    // Run on boot
   client.reconnect();                                             // Conect to ubidots
   client.ubidotsSubscribe(DEVICE_LABEL, MOISTURE_WARNING_LABEL);  // Subscribe to label from ubidots
 
-  if (!ads.begin()){                   // Try to start ADS
+  if (!ads.begin()) {                  // Try to start ADS
     bool state = false;                 // Create boolean
-    while (1) {                         // loop forever
+    for (int i = 0; i < 50; i++) {
       state = !state;                     // Togle boolean
       digitalWrite(led, state);           // Control led
       delay(100);                         // Wait
     }
+    ESP.restart();
   }
   if (! bme.begin(0x76, &Wire)) {     // Try to start ADS
     bool state = false;                 // Create boolean
-    while (1) {                         // loop forever
+    for (int i = 0; i < 50; i++) {
       state = !state;                     // Togle boolean
       digitalWrite(led, state);           // Control led
       delay(500);                         // Wait
     }
+    ESP.restart();
   }
 
   client.add(TEMP_LABEL, get_air_temp());                         // Publish value to ubidots
@@ -172,19 +179,19 @@ void loop() {
 
 void water_warning() {                                        // Create function
   bool led_state = true;                                      // Create boolean
-  for (int i = 0; i < 6; i++) {                               // Loop 6 times
+  for (int i = 0; i < 4; i++) {                               // Loop 6 times
     led_state = !led_state;                                     // Toggle boolean
     digitalWrite(led, led_state);                               // controll led
     delay(300);                                                 // wait
-  }  
+  }
   int warning_loops;                                          // Create integer
   EEPROM.get(WATER_WARNING_ADDRESS, warning_loops);           // Set integer to value from EEPROM
-  if (warning_loops <= 12) {                                  // If integer >= 12
+  if (warning_loops <= 30) {                                  // If integer >= 30
     warning_loops++;                                            // Increase integer
     EEPROM.put(WATER_WARNING_ADDRESS, warning_loops);           // Store integer in EEPROM
     EEPROM.commit();                                            // Store integer in EEPROM
   }
-  else {                                                      // If integer < 12
+  else {                                                      // If integer < 30
     EEPROM.put(WATER_WARNING_ADDRESS, 0);                       // Store 0 as loop counter in EEPROM
     EEPROM.commit();                                            // Store in EEPROM
     EEPROM.put(WATER_FLAG_ADDRESS, false);                      // Store false as water flag in EEPROM
@@ -210,7 +217,7 @@ void handle_OTA() {                                     // Handle OTA function
   EEPROM.put(OTA_FLAG_ADDRESS, false);                    // Store boolean in EEPROM
   EEPROM.commit();                                        // Store in EEPROM
   EEPROM.end();                                           // Close EEPROM
-  
+
   ArduinoOTA.setHostname("PlantGuard");                   // Set OTA lable
 
   ArduinoOTA.onStart([]() {                               // Configure OTA
@@ -255,15 +262,15 @@ void handle_OTA() {                                     // Handle OTA function
 
 float get_air_temp() {                    // Create function
   float temp = bme.readTemperature();     // Read value
-  if ( temp > 90) {                       // Test if value unreasonable
+  if ( temp > 90 || temp < 5) {                       // Test if value unreasonable
     temp = get_air_temp();                // Run function again
   }
   return temp;                            // Return value
 
-} 
+}
 float get_air_humidity() {                  // Create function
   float humidity = bme.readHumidity();      // Read value
-  if ( humidity > 90) {                     // Test if value unreasonable
+  if ( humidity > 90 || humidity < 5) {                     // Test if value unreasonable
     humidity = get_air_humidity();          // Run function again
   }
   return humidity;                          // Return value
@@ -271,33 +278,52 @@ float get_air_humidity() {                  // Create function
 }
 
 float get_soil_moisture() {                                         // Create function
-  int16_t adc2 = ads.readADC_SingleEnded(2);                        // Read analog value
-  float MoisturePercent = map(adc2, AirValue, WaterValue, 0, 100);  // Calculate percentage
-  //if (MoisturePercent > 100) {                                    // Clamp persentage
-  //  MoisturePercent = 100;
-  //}
-  //if (MoisturePercent < 0) {                                      // Clamp persentage
-  //  MoisturePercent = 0;
-  // }
-  return MoisturePercent;                                           // Return persentage
+  float total = 0;
+  for (int i = 0; i < 5; i++) {
+    int16_t adc2 = ads.readADC_SingleEnded(2);                        // Read analog value
+//    float MoisturePercent = map(adc2, AirValue, WaterValue, 0, 100);  // Calculate percentage
+    //if (MoisturePercent > 100) {                                    // Clamp persentage
+    //  MoisturePercent = 100;
+    //}
+    //if (MoisturePercent < 0) {                                      // Clamp persentage
+    //  MoisturePercent = 0;
+    // }
+//    total += MoisturePercent;
+    total += adc2;
+  }
+  float avg = total / 5;
+  return avg;                                           // Return persentage
 }
 
 float get_light_level() {                                       // Create function
-  int16_t adc1 = ads.readADC_SingleEnded(1);                    // Read analog value
-  float LightPercent = map(adc1, LIGHT_MIN, LIGHT_MAX, 0, 100);
-  if (LightPercent > 100) {                                     // Clamp persentage
-    LightPercent = 100;
+  float total = 0;
+  for (int i = 0; i < 5; i++) {
+    int16_t adc1 = ads.readADC_SingleEnded(1);                    // Read analog value
+    float LightPercent = map(adc1, LIGHT_MIN, LIGHT_MAX, 0, 100);
+    if (LightPercent > 100) {                                     // Clamp persentage
+      LightPercent = 100;
+    }
+    if (LightPercent < 0) {                                       // Clamp persentage
+      LightPercent = 0;
+    }
+    total += LightPercent;
   }
-  if (LightPercent < 0) {                                       // Clamp persentage
-    LightPercent = 0;
-  }
-  return LightPercent;                                          // Return persentage
+  float avg_light = total / 5;
+  return avg_light;                                          // Return persentage
 }
 
 float get_battery_voltage() {                     // Create function
-  int16_t adc0 = ads.readADC_SingleEnded(0);      // Read analog value
-  float volts = ads.computeVolts(adc0);           // Calculate voltage
-  return volts;                                   // Return voltage
+  float total = 0;
+  for (int i = 0; i < 5; i++) {
+    int16_t adc0 = ads.readADC_SingleEnded(0);      // Read analog value
+    float volts = (ads.computeVolts(adc0) + VOLTAGE_OFSET);           // Calculate voltage
+    if (volts < 2) {
+      volts = get_battery_voltage();
+    }
+    total += volts;
+  }
+  float avg = total / 5;
+  return avg;                                   // Return voltage
 }
 
 float get_battery_persentage() {                                                                          // Create function
