@@ -72,7 +72,7 @@
 #define WaterValue 2500             // value for soil moisture calibration
 #define LIGHT_MIN 0                 // value for light level calibration
 #define LIGHT_MAX 1200              // value for light level calibration
-#define VOLTAGE_OFSET 0.4
+#define VOLTAGE_OFSET 0.39
 
 
 #define led 1             // GIPO for LED
@@ -281,15 +281,15 @@ float get_soil_moisture() {                                         // Create fu
   float total = 0;
   for (int i = 0; i < 5; i++) {
     int16_t adc2 = ads.readADC_SingleEnded(2);                        // Read analog value
-//    float MoisturePercent = map(adc2, AirValue, WaterValue, 0, 100);  // Calculate percentage
-    //if (MoisturePercent > 100) {                                    // Clamp persentage
-    //  MoisturePercent = 100;
-    //}
-    //if (MoisturePercent < 0) {                                      // Clamp persentage
-    //  MoisturePercent = 0;
-    // }
-//    total += MoisturePercent;
-    total += adc2;
+    float MoisturePercent = map(adc2, AirValue, WaterValue, 0, 100);  // Calculate percentage
+    if (MoisturePercent > 100) {                                    // Clamp persentage
+      MoisturePercent = 100;
+    }
+    if (MoisturePercent < 0) {                                      // Clamp persentage
+      MoisturePercent = 0;
+     }
+    total += MoisturePercent;
+//    total += adc2;
   }
   float avg = total / 5;
   return avg;                                           // Return persentage
